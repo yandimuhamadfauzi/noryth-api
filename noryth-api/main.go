@@ -1124,6 +1124,16 @@ func main() {
 		server.claimHandler,
 	)
 
+	mux.HandleFunc(
+		"/api/cases/001/claim",
+		server.case001ClaimHandler,
+	)
+
+	mux.HandleFunc(
+		"/api/cases/001/hint",
+		server.case001HintHandler,
+	)
+
 	// ==============================================
 	// SERVER PORT
 	// ==============================================
