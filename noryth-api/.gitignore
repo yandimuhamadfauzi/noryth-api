@@ -1,0 +1,38 @@
+
+# ==========================================
+# NORYTH API - GITIGNORE
+# ==========================================
+
+# Firebase Admin SDK private keys
+service-account.json
+serviceAccountKey.json
+firebase-adminsdk*.json
+*firebase-adminsdk*.json
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Go compiled binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+server
+
+# Build and temporary files
+bin/
+dist/
+tmp/
+*.test
+*.out
+
+# Editor files
+.vscode/
+.idea/
+
+# System files
+.DS_Store
+Thumbs.db
