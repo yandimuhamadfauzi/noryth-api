@@ -1,4 +1,3 @@
-
 package main
 
 import (
@@ -27,10 +26,14 @@ import (
 // NORYTH API
 // Kasus #002 - Jejak Digital yang Hilang
 //
+// Features:
 // - Firebase ID Token verification
-// - Server-side answer validation
+// - Server-side JavaScript validation
 // - Firestore transaction
 // - One-time XP reward
+// - Level and Rank synchronization
+// - Completed missions synchronization
+// - Render deployment support
 // ==========================================================
 
 type Server struct {
@@ -44,16 +47,20 @@ type ClaimRequest struct {
 }
 
 type ClaimResponse struct {
-	Success      bool   `json:"success"`
-	AlreadyPaid  bool   `json:"alreadyPaid"`
-	AwardedXp    int64  `json:"awardedXp"`
-	TotalXp      int64  `json:"totalXp"`
-	Message      string `json:"message"`
+	Success     bool   `json:"success"`
+	AlreadyPaid bool   `json:"alreadyPaid"`
+	AwardedXp   int64  `json:"awardedXp"`
+	TotalXp     int64  `json:"totalXp"`
+	Message     string `json:"message"`
 }
 
 type APIError struct {
 	Error string `json:"error"`
 }
+
+// ==========================================================
+// JSON RESPONSE HELPERS
+// ==========================================================
 
 func jsonResponse(
 	w http.ResponseWriter,
@@ -62,6 +69,7 @@ func jsonResponse(
 ) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
+
 	_ = json.NewEncoder(w).Encode(payload)
 }
 
@@ -73,18 +81,19 @@ func respondError(
 	jsonResponse(
 		w,
 		statusCode,
-		APIError{Error: message},
+		APIError{
+			Error: message,
+		},
 	)
 }
 
 // ==========================================================
-// VALIDASI KODE JAVASCRIPT
+// JAVASCRIPT INVESTIGATION ENGINE
 //
-// Ini evaluator subset, bukan runtime JavaScript penuh.
-// Server tidak melakukan eval() atau menjalankan kode
-// yang dikirim pemain.
+// Ini adalah evaluator subset JavaScript,
+// bukan runtime JavaScript penuh.
 //
-// Bentuk yang diterima:
+// Contoh kode pemain:
 //
 // const hasil = logs.filter(log =>
 //   log.riskScore >= 80 &&
@@ -93,7 +102,8 @@ func respondError(
 //
 // console.log(hasil);
 //
-// Perbedaan spasi, baris dan nama variabel diterima.
+// Backend tidak mengeksekusi kode JavaScript
+// mentah menggunakan eval().
 // ==========================================================
 
 var filterPattern = regexp.MustCompile(
@@ -106,12 +116,17 @@ var filterPattern = regexp.MustCompile(
 		`([A-Za-z_$][A-Za-z0-9_$]*)\s*\)\s*;?\s*)?$`,
 )
 
+// ==========================================================
+// DIGITAL EVIDENCE MODEL
+// ==========================================================
+
 type DigitalLog struct {
 	ID        string
 	RiskScore int
 	Action    string
 }
 
+// Dataset identik dengan Kasus #002 Flutter.
 var evidence = []DigitalLog{
 	{"LOG-001", 15, "viewed"},
 	{"LOG-002", 95, "deleted"},
@@ -121,6 +136,10 @@ var evidence = []DigitalLog{
 	{"LOG-006", 97, "downloaded"},
 	{"LOG-007", 80, "viewed"},
 }
+
+// ==========================================================
+// HAPUS KURUNG LUAR EKSPRESI
+// ==========================================================
 
 func unwrapParentheses(value string) string {
 	value = strings.TrimSpace(value)
@@ -158,18 +177,31 @@ func unwrapParentheses(value string) string {
 	return value
 }
 
-func compareInt(left int, operator string, right int) bool {
+// ==========================================================
+// INTEGER COMPARISON
+// ==========================================================
+
+func compareInt(
+	left int,
+	operator string,
+	right int,
+) bool {
 	switch operator {
 	case "==", "===":
 		return left == right
+
 	case "!=", "!==":
 		return left != right
+
 	case ">=":
 		return left >= right
+
 	case "<=":
 		return left <= right
+
 	case ">":
 		return left > right
+
 	case "<":
 		return left < right
 	}
@@ -177,16 +209,29 @@ func compareInt(left int, operator string, right int) bool {
 	return false
 }
 
-func compareString(left, operator, right string) bool {
+// ==========================================================
+// STRING COMPARISON
+// ==========================================================
+
+func compareString(
+	left string,
+	operator string,
+	right string,
+) bool {
 	switch operator {
 	case "==", "===":
 		return left == right
+
 	case "!=", "!==":
 		return left != right
 	}
 
 	return false
 }
+
+// ==========================================================
+// VALIDASI HASIL JAVASCRIPT
+// ==========================================================
 
 func validJavaScriptAnswer(source string) bool {
 	if len(source) == 0 || len(source) > 4000 {
@@ -204,17 +249,23 @@ func validJavaScriptAnswer(source string) bool {
 	expression := unwrapParentheses(match[3])
 	loggedName := match[4]
 
+	// Nama variabel console.log harus sesuai
+	// dengan variabel yang menyimpan hasil.
 	if loggedName != "" &&
 		(resultName == "" || loggedName != resultName) {
 		return false
 	}
 
-	// Hanya dua kondisi AND yang didukung.
+	// Kasus #002 menggunakan dua kondisi AND.
 	parts := strings.Split(expression, "&&")
 
 	if len(parts) != 2 {
 		return false
 	}
+
+	// ======================================================
+	// RISK SCORE PREDICATE
+	// ======================================================
 
 	riskPattern := regexp.MustCompile(
 		`^` + regexp.QuoteMeta(itemName) +
@@ -222,6 +273,10 @@ func validJavaScriptAnswer(source string) bool {
 			`(===|!==|==|!=|>=|<=|>|<)\s*` +
 			`(\d[\d_]*)$`,
 	)
+
+	// ======================================================
+	// ACTION PREDICATE
+	// ======================================================
 
 	actionPattern := regexp.MustCompile(
 		`^` + regexp.QuoteMeta(itemName) +
@@ -236,12 +291,21 @@ func validJavaScriptAnswer(source string) bool {
 	for _, raw := range parts {
 		part := unwrapParentheses(raw)
 
+		// ================================================
+		// PARSE RISK SCORE
+		// ================================================
+
 		if found := riskPattern.FindStringSubmatch(part); found != nil {
 			if riskCondition != nil {
 				return false
 			}
 
-			numberText := strings.ReplaceAll(found[2], "_", "")
+			numberText := strings.ReplaceAll(
+				found[2],
+				"_",
+				"",
+			)
+
 			number, err := strconv.Atoi(numberText)
 
 			if err != nil {
@@ -260,6 +324,10 @@ func validJavaScriptAnswer(source string) bool {
 
 			continue
 		}
+
+		// ================================================
+		// PARSE ACTION
+		// ================================================
 
 		if found := actionPattern.FindStringSubmatch(part); found != nil {
 			if actionCondition != nil {
@@ -285,12 +353,17 @@ func validJavaScriptAnswer(source string) bool {
 			continue
 		}
 
+		// Ekspresi tidak didukung.
 		return false
 	}
 
 	if riskCondition == nil || actionCondition == nil {
 		return false
 	}
+
+	// ======================================================
+	// EXPECTED EVIDENCE
+	// ======================================================
 
 	expected := map[string]bool{
 		"LOG-002": true,
@@ -304,6 +377,7 @@ func validJavaScriptAnswer(source string) bool {
 			if !expected[entry.ID] {
 				return false
 			}
+
 			foundCount++
 		}
 	}
@@ -319,10 +393,13 @@ func intValue(value interface{}) int64 {
 	switch v := value.(type) {
 	case int64:
 		return v
+
 	case int:
 		return int64(v)
+
 	case float64:
 		return int64(v)
+
 	default:
 		return 0
 	}
@@ -330,19 +407,22 @@ func intValue(value interface{}) int64 {
 
 func boolValue(value interface{}) bool {
 	v, ok := value.(bool)
+
 	return ok && v
 }
 
 func stringValue(value interface{}) string {
 	v, ok := value.(string)
+
 	if !ok {
 		return ""
 	}
+
 	return v
 }
 
 // ==========================================================
-// AUTHENTICATION
+// FIREBASE AUTHENTICATION
 // ==========================================================
 
 func (s *Server) authenticate(
@@ -351,7 +431,9 @@ func (s *Server) authenticate(
 	header := r.Header.Get("Authorization")
 
 	if !strings.HasPrefix(header, "Bearer ") {
-		return "", errors.New("token login tidak tersedia")
+		return "", errors.New(
+			"token login tidak tersedia",
+		)
 	}
 
 	idToken := strings.TrimSpace(
@@ -375,16 +457,93 @@ func (s *Server) authenticate(
 }
 
 // ==========================================================
-// CLAIM XP - FIRESTORE TRANSACTION
+// NORYTH LEVEL & RANK SYSTEM
+//
+// Sama dengan XpRules.calculate() pada Flutter.
+//
+// Level 1: 0 - 199 XP
+// Level 2: 200 - 499 XP
+// Level 3: 500 - 899 XP
+// Level 4: 900 - 1399 XP
+// Level 5: 1400 - 1999 XP
+//
+// Rank:
+// Level 1-2  : Rekrut
+// Level 3-4  : Analis Digital
+// Level 5-7  : Investigator
+// Level 8-10 : Senior Investigator
+// Level 11+  : Master Detective
+// ==========================================================
+
+type NorythLevelProgress struct {
+	Level int64
+	Rank  string
+}
+
+func calculateNorythLevel(xp int64) NorythLevelProgress {
+	if xp < 0 {
+		xp = 0
+	}
+
+	level := int64(1)
+	nextLevelAt := int64(200)
+
+	for xp >= nextLevelAt {
+		level++
+
+		// Kebutuhan XP untuk level berikutnya
+		// bertambah 100 XP setiap naik level.
+		requiredForNext := int64(200) + (level-1)*100
+
+		nextLevelAt += requiredForNext
+	}
+
+	rank := "Rekrut"
+
+	switch {
+	case level >= 11:
+		rank = "Master Detective"
+
+	case level >= 8:
+		rank = "Senior Investigator"
+
+	case level >= 5:
+		rank = "Investigator"
+
+	case level >= 3:
+		rank = "Analis Digital"
+	}
+
+	return NorythLevelProgress{
+		Level: level,
+		Rank:  rank,
+	}
+}
+
+// ==========================================================
+// CASE #002 XP REWARD
+//
+// - Transaksi Firestore
+// - XP hanya diberikan sekali
+// - Level dan Rank selalu disinkronkan
+// - Completed Missions disinkronkan
+// - Progres Kasus #001 tidak diubah
 // ==========================================================
 
 func (s *Server) awardCase002(
 	ctx context.Context,
 	uid string,
 ) (ClaimResponse, error) {
-	userRef := s.db.Collection("users").Doc(uid)
 
-	progressRef := userRef.
+	userRef := s.db.
+		Collection("users").
+		Doc(uid)
+
+	case001Ref := userRef.
+		Collection("missionPractice").
+		Doc("case_001")
+
+	case002Ref := userRef.
 		Collection("missionPractice").
 		Doc("case_002")
 
@@ -392,147 +551,305 @@ func (s *Server) awardCase002(
 		Collection("missions").
 		Doc("case_002")
 
-	response := ClaimResponse{}
+	result := ClaimResponse{}
 
 	err := s.db.RunTransaction(
 		ctx,
-		func(ctx context.Context, tx *firestore.Transaction) error {
+		func(
+			ctx context.Context,
+			tx *firestore.Transaction,
+		) error {
 
-			// Semua read sebelum write.
+			// ============================================
+			// READ SEMUA DOKUMEN SEBELUM WRITE
+			// ============================================
+
 			missionSnap, err := tx.Get(missionRef)
+
 			if err != nil {
-				return fmt.Errorf("misi tidak dapat dibaca: %w", err)
+				return fmt.Errorf(
+					"gagal membaca katalog case_002: %w",
+					err,
+				)
 			}
 
 			userSnap, err := tx.Get(userRef)
+
 			if err != nil {
-				return fmt.Errorf("pengguna tidak ditemukan: %w", err)
+				return fmt.Errorf(
+					"gagal membaca akun pemain: %w",
+					err,
+				)
 			}
 
-			progressSnap, err := tx.Get(progressRef)
+			case001Snap, err := tx.Get(case001Ref)
 
-			progressExists := err == nil
+			case001Exists := err == nil
 
 			if err != nil &&
 				status.Code(err) != codes.NotFound {
-				return fmt.Errorf("gagal membaca progres: %w", err)
+				return fmt.Errorf(
+					"gagal membaca progres case_001: %w",
+					err,
+				)
 			}
+
+			case002Snap, err := tx.Get(case002Ref)
+
+			case002Exists := err == nil
+
+			if err != nil &&
+				status.Code(err) != codes.NotFound {
+				return fmt.Errorf(
+					"gagal membaca progres case_002: %w",
+					err,
+				)
+			}
+
+			// ============================================
+			// DATA FIRESTORE
+			// ============================================
 
 			missionData := missionSnap.Data()
 			userData := userSnap.Data()
 
-			if !boolValue(missionData["isPublished"]) ||
-				strings.ToLower(
-					strings.TrimSpace(
-						stringValue(missionData["status"]),
-					),
-				) != "active" {
-				return errors.New("kasus belum aktif")
+			// ============================================
+			// VALIDASI STATUS MISI
+			// ============================================
+
+			published := boolValue(
+				missionData["isPublished"],
+			)
+
+			missionStatus := strings.ToLower(
+				strings.TrimSpace(
+					stringValue(missionData["status"]),
+				),
+			)
+
+			if !published || missionStatus != "active" {
+				return errors.New(
+					"kasus #002 belum aktif di Firestore",
+				)
 			}
 
-			reward := intValue(missionData["xpReward"])
+			// ============================================
+			// XP REWARD DARI FIRESTORE
+			// ============================================
+
+			reward := intValue(
+				missionData["xpReward"],
+			)
 
 			if reward <= 0 || reward > 1000 {
-				return errors.New("reward XP tidak valid")
+				return errors.New(
+					"xpReward case_002 tidak valid",
+				)
 			}
 
-			oldXP := intValue(userData["xp"])
+			// ============================================
+			// DATA XP SEBELUMNYA
+			// ============================================
 
-			var progressData map[string]interface{}
+			oldXP := intValue(
+				userData["xp"],
+			)
 
-			if progressExists {
-				progressData = progressSnap.Data()
-			} else {
-				progressData = map[string]interface{}{}
+			if oldXP < 0 {
+				return errors.New(
+					"nilai XP pemain tidak valid",
+				)
 			}
 
-			// Idempotensi: hadiah yang sudah diberikan
-			// tidak akan diberikan ulang.
-			if boolValue(progressData["xpAwarded"]) {
-				response = ClaimResponse{
-					Success:     true,
-					AlreadyPaid: true,
-					AwardedXp:   0,
-					TotalXp:     oldXP,
-					Message:     "Hadiah sudah pernah diberikan.",
-				}
-				return nil
+			case001Data := map[string]interface{}{}
+
+			if case001Exists {
+				case001Data = case001Snap.Data()
 			}
 
-			// Integrasi dengan progres lama:
-			// practiceCompleted mungkin sudah true,
-			// tetapi xpAwarded masih false.
-			// Kode tetap harus diverifikasi server
-			// sebelum fungsi ini dipanggil.
+			case002Data := map[string]interface{}{}
 
-			newXP := oldXP + reward
-
-			// Pertahankan attempts lama.
-			attempts := intValue(progressData["attempts"])
-			if attempts < 1 {
-				attempts = 1
+			if case002Exists {
+				case002Data = case002Snap.Data()
 			}
 
-			update := map[string]interface{}{
-				"attempts":         attempts,
-				"practiceCompleted": true,
-				"xpAwarded":         true,
-				"xpEarned":          reward,
-				"xpAwardedAt":       firestore.ServerTimestamp,
+			// ============================================
+			// CEK HADIAH SEBELUMNYA
+			// ============================================
+
+			alreadyPaid := boolValue(
+				case002Data["xpAwarded"],
+			)
+
+			awardedXP := int64(0)
+
+			if !alreadyPaid {
+				awardedXP = reward
 			}
 
-			// Jangan timpa waktu selesai sebelumnya.
-			if _, exists := progressData["completedAt"]; !exists {
-				update["completedAt"] = firestore.ServerTimestamp
+			newTotalXP := oldXP + awardedXP
+
+			// ============================================
+			// HITUNG LEVEL DAN RANK BARU
+			// ============================================
+
+			levelProgress := calculateNorythLevel(
+				newTotalXP,
+			)
+
+			// ============================================
+			// HITUNG KASUS SELESAI
+			//
+			// Untuk sementara, backend ini mengenal
+			// Kasus #001 dan Kasus #002.
+			//
+			// Nilai lama yang lebih tinggi
+			// tidak akan diturunkan.
+			// ============================================
+
+			completedMissions := int64(1)
+
+			// Kasus #002 sudah diverifikasi
+			// oleh claimHandler.
+
+			if boolValue(
+				case001Data["practiceCompleted"],
+			) {
+				completedMissions++
+			}
+
+			oldCompleted := intValue(
+				userData["completedMissions"],
+			)
+
+			if oldCompleted > completedMissions {
+				completedMissions = oldCompleted
+			}
+
+			// ============================================
+			// UPDATE STATISTIK USER
+			// ============================================
+
+			userUpdates := []firestore.Update{
+				{
+					Path:  "level",
+					Value: levelProgress.Level,
+				},
+				{
+					Path:  "rank",
+					Value: levelProgress.Rank,
+				},
+				{
+					Path:  "completedMissions",
+					Value: completedMissions,
+				},
+				{
+					Path:  "updatedAt",
+					Value: firestore.ServerTimestamp,
+				},
+			}
+
+			// Tambah XP hanya jika reward
+			// belum pernah diberikan.
+			if awardedXP > 0 {
+				userUpdates = append(
+					userUpdates,
+					firestore.Update{
+						Path: "xp",
+						Value: firestore.Increment(
+							awardedXP,
+						),
+					},
+				)
 			}
 
 			if err := tx.Update(
 				userRef,
-				[]firestore.Update{
-					{
-						Path:  "xp",
-						Value: firestore.Increment(reward),
-					},
-					{
-						Path:  "updatedAt",
-						Value: firestore.ServerTimestamp,
-					},
-				},
+				userUpdates,
 			); err != nil {
-				return err
+				return fmt.Errorf(
+					"gagal sinkronisasi statistik: %w",
+					err,
+				)
 			}
 
-			if err := tx.Set(
-				progressRef,
-				update,
-				firestore.MergeAll,
-			); err != nil {
-				return err
+			// ============================================
+			// CATAT REWARD KASUS #002
+			// ============================================
+
+			if !alreadyPaid {
+				attempts := intValue(
+					case002Data["attempts"],
+				)
+
+				if attempts < 1 {
+					attempts = 1
+				}
+
+				progressUpdate := map[string]interface{}{
+					"attempts":          attempts,
+					"practiceCompleted": true,
+					"xpAwarded":         true,
+					"xpEarned":          reward,
+					"xpAwardedAt":       firestore.ServerTimestamp,
+				}
+
+				// Pertahankan waktu selesai lama.
+				if _, exists := case002Data["completedAt"]; !exists {
+					progressUpdate["completedAt"] =
+						firestore.ServerTimestamp
+				}
+
+				if err := tx.Set(
+					case002Ref,
+					progressUpdate,
+					firestore.MergeAll,
+				); err != nil {
+					return fmt.Errorf(
+						"gagal mencatat hadiah case_002: %w",
+						err,
+					)
+				}
 			}
 
-			response = ClaimResponse{
+			// ============================================
+			// RESPONSE
+			// ============================================
+
+			result = ClaimResponse{
 				Success:     true,
-				AlreadyPaid: false,
-				AwardedXp:   reward,
-				TotalXp:     newXP,
-				Message:     "Hadiah XP berhasil diberikan.",
+				AlreadyPaid: alreadyPaid,
+				AwardedXp:   awardedXP,
+				TotalXp:     newTotalXP,
+			}
+
+			if alreadyPaid {
+				result.Message =
+					"Hadiah sebelumnya sudah diberikan; " +
+						"level dan rank telah disinkronkan."
+			} else {
+				result.Message =
+					"Hadiah berhasil diberikan; " +
+						"level dan rank telah disinkronkan."
 			}
 
 			return nil
 		},
 	)
 
-	return response, err
+	return result, err
 }
 
 // ==========================================================
-// HTTP HANDLERS
+// API CLAIM HANDLER
 // ==========================================================
 
 func (s *Server) claimHandler(
 	w http.ResponseWriter,
 	r *http.Request,
 ) {
+
+	// Hanya menerima HTTP POST.
 	if r.Method != http.MethodPost {
 		respondError(
 			w,
@@ -541,6 +858,10 @@ func (s *Server) claimHandler(
 		)
 		return
 	}
+
+	// ==============================================
+	// FIREBASE AUTH
+	// ==============================================
 
 	uid, err := s.authenticate(r)
 
@@ -553,7 +874,16 @@ func (s *Server) claimHandler(
 		return
 	}
 
-	r.Body = http.MaxBytesReader(w, r.Body, 8192)
+	// ==============================================
+	// REQUEST BODY
+	// ==============================================
+
+	r.Body = http.MaxBytesReader(
+		w,
+		r.Body,
+		8192,
+	)
+
 	defer r.Body.Close()
 
 	var request ClaimRequest
@@ -572,6 +902,7 @@ func (s *Server) claimHandler(
 
 	// Tidak boleh ada JSON tambahan.
 	var extra interface{}
+
 	if err := decoder.Decode(&extra); err != io.EOF {
 		respondError(
 			w,
@@ -581,7 +912,10 @@ func (s *Server) claimHandler(
 		return
 	}
 
-	// Validasi dilakukan DI SERVER.
+	// ==============================================
+	// VALIDASI JAVASCRIPT DI BACKEND
+	// ==============================================
+
 	if !validJavaScriptAnswer(request.Code) {
 		respondError(
 			w,
@@ -591,13 +925,20 @@ func (s *Server) claimHandler(
 		return
 	}
 
+	// ==============================================
+	// TRANSAKSI XP
+	// ==============================================
+
 	response, err := s.awardCase002(
 		r.Context(),
 		uid,
 	)
 
 	if err != nil {
-		log.Printf("claim failed: %v", err)
+		log.Printf(
+			"claim failed: %v",
+			err,
+		)
 
 		respondError(
 			w,
@@ -607,14 +948,27 @@ func (s *Server) claimHandler(
 		return
 	}
 
-	jsonResponse(w, http.StatusOK, response)
+	jsonResponse(
+		w,
+		http.StatusOK,
+		response,
+	)
 }
+
+// ==========================================================
+// CORS MIDDLEWARE
+// ==========================================================
 
 func (s *Server) withCORS(
 	next http.Handler,
 ) http.Handler {
+
 	return http.HandlerFunc(
-		func(w http.ResponseWriter, r *http.Request) {
+		func(
+			w http.ResponseWriter,
+			r *http.Request,
+		) {
+
 			origin := r.Header.Get("Origin")
 
 			if origin != "" && s.origins[origin] {
@@ -622,14 +976,17 @@ func (s *Server) withCORS(
 					"Access-Control-Allow-Origin",
 					origin,
 				)
+
 				w.Header().Set(
 					"Vary",
 					"Origin",
 				)
+
 				w.Header().Set(
 					"Access-Control-Allow-Headers",
 					"Authorization, Content-Type",
 				)
+
 				w.Header().Set(
 					"Access-Control-Allow-Methods",
 					"POST, OPTIONS",
@@ -638,11 +995,15 @@ func (s *Server) withCORS(
 
 			if r.Method == http.MethodOptions {
 				if origin != "" && !s.origins[origin] {
-					w.WriteHeader(http.StatusForbidden)
+					w.WriteHeader(
+						http.StatusForbidden,
+					)
 					return
 				}
 
-				w.WriteHeader(http.StatusNoContent)
+				w.WriteHeader(
+					http.StatusNoContent,
+				)
 				return
 			}
 
@@ -658,8 +1019,17 @@ func (s *Server) withCORS(
 func main() {
 	ctx := context.Background()
 
-	projectID := os.Getenv("FIREBASE_PROJECT_ID")
-	serviceAccount := os.Getenv("FIREBASE_SERVICE_ACCOUNT_JSON")
+	// ==============================================
+	// ENVIRONMENT VARIABLES
+	// ==============================================
+
+	projectID := os.Getenv(
+		"FIREBASE_PROJECT_ID",
+	)
+
+	serviceAccount := os.Getenv(
+		"FIREBASE_SERVICE_ACCOUNT_JSON",
+	)
 
 	if projectID == "" || serviceAccount == "" {
 		log.Fatal(
@@ -667,6 +1037,10 @@ func main() {
 				"FIREBASE_SERVICE_ACCOUNT_JSON wajib diisi",
 		)
 	}
+
+	// ==============================================
+	// FIREBASE ADMIN SDK
+	// ==============================================
 
 	credential := option.WithCredentialsJSON(
 		[]byte(serviceAccount),
@@ -685,15 +1059,22 @@ func main() {
 	}
 
 	authClient, err := app.Auth(ctx)
+
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	db, err := app.Firestore(ctx)
+
 	if err != nil {
 		log.Fatal(err)
 	}
+
 	defer db.Close()
+
+	// ==============================================
+	// ALLOWED ORIGINS
+	// ==============================================
 
 	origins := map[string]bool{}
 
@@ -702,6 +1083,7 @@ func main() {
 		",",
 	) {
 		origin = strings.TrimSpace(origin)
+
 		if origin != "" {
 			origins[origin] = true
 		}
@@ -713,11 +1095,19 @@ func main() {
 		origins:    origins,
 	}
 
+	// ==============================================
+	// HTTP ROUTES
+	// ==============================================
+
 	mux := http.NewServeMux()
 
+	// Health check Render.
 	mux.HandleFunc(
 		"/health",
-		func(w http.ResponseWriter, r *http.Request) {
+		func(
+			w http.ResponseWriter,
+			r *http.Request,
+		) {
 			jsonResponse(
 				w,
 				http.StatusOK,
@@ -728,15 +1118,25 @@ func main() {
 		},
 	)
 
+	// Klaim hadiah XP Kasus #002.
 	mux.HandleFunc(
 		"/api/cases/002/claim",
 		server.claimHandler,
 	)
 
+	// ==============================================
+	// SERVER PORT
+	// ==============================================
+
 	port := os.Getenv("PORT")
+
 	if port == "" {
 		port = "8080"
 	}
+
+	// ==============================================
+	// HTTP SERVER
+	// ==============================================
 
 	httpServer := &http.Server{
 		Addr:              ":" + port,
@@ -746,7 +1146,12 @@ func main() {
 		WriteTimeout:      30 * time.Second,
 	}
 
-	log.Printf("Noryth API berjalan di port %s", port)
+	log.Printf(
+		"Noryth API berjalan di port %s",
+		port,
+	)
 
-	log.Fatal(httpServer.ListenAndServe())
+	log.Fatal(
+		httpServer.ListenAndServe(),
+	)
 }
