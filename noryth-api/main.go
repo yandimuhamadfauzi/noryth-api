@@ -22,19 +22,6 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// ==========================================================
-// NORYTH API
-//
-// Case #001: SQL (handler di case001_claim.go)
-// Case #002: JavaScript
-//
-// Firebase Authentication
-// Firestore transactions
-// One-time XP reward
-// Level, Rank, Completed Missions
-// Render deployment
-// ==========================================================
-
 type Server struct {
 	authClient *auth.Client
 	db         *firestore.Client
@@ -56,10 +43,6 @@ type ClaimResponse struct {
 type APIError struct {
 	Error string `json:"error"`
 }
-
-// ==========================================================
-// HTTP RESPONSE
-// ==========================================================
 
 func jsonResponse(
 	w http.ResponseWriter,
@@ -84,20 +67,7 @@ func respondError(
 	})
 }
 
-// ==========================================================
-// JAVASCRIPT ENGINE - CASE #002
-//
-// Restricted evaluator, not arbitrary JavaScript execution.
-//
-// Example:
-//
-// const hasil = logs.filter(log =>
-//   log.riskScore >= 80 &&
-//   log.action === "deleted"
-// );
-//
-// console.log(hasil);
-// ==========================================================
+// JavaScript Case #002
 
 var filterPattern = regexp.MustCompile(
 	`(?s)^\s*` +
@@ -124,10 +94,6 @@ var evidence = []DigitalLog{
 	{"LOG-006", 97, "downloaded"},
 	{"LOG-007", 80, "viewed"},
 }
-
-// ==========================================================
-// REMOVE OUTER PARENTHESES
-// ==========================================================
 
 func unwrapParentheses(value string) string {
 	value = strings.TrimSpace(value)
@@ -164,10 +130,6 @@ func unwrapParentheses(value string) string {
 	return value
 }
 
-// ==========================================================
-// INTEGER COMPARISON
-// ==========================================================
-
 func compareInt(
 	left int,
 	operator string,
@@ -176,29 +138,20 @@ func compareInt(
 	switch operator {
 	case "==", "===":
 		return left == right
-
 	case "!=", "!==":
 		return left != right
-
 	case ">=":
 		return left >= right
-
 	case "<=":
 		return left <= right
-
 	case ">":
 		return left > right
-
 	case "<":
 		return left < right
 	}
 
 	return false
 }
-
-// ==========================================================
-// STRING COMPARISON
-// ==========================================================
 
 func compareString(
 	left string,
@@ -208,17 +161,12 @@ func compareString(
 	switch operator {
 	case "==", "===":
 		return left == right
-
 	case "!=", "!==":
 		return left != right
 	}
 
 	return false
 }
-
-// ==========================================================
-// VALIDATE JAVASCRIPT ANSWER
-// ==========================================================
 
 func validJavaScriptAnswer(source string) bool {
 	if len(source) == 0 || len(source) > 4000 {
@@ -267,10 +215,6 @@ func validJavaScriptAnswer(source string) bool {
 	for _, raw := range parts {
 		part := unwrapParentheses(raw)
 
-		// ----------------------------------------------
-		// RISK SCORE CONDITION
-		// ----------------------------------------------
-
 		if found := riskPattern.FindStringSubmatch(part); found != nil {
 			if riskCondition != nil {
 				return false
@@ -298,10 +242,6 @@ func validJavaScriptAnswer(source string) bool {
 
 			continue
 		}
-
-		// ----------------------------------------------
-		// ACTION CONDITION
-		// ----------------------------------------------
 
 		if found := actionPattern.FindStringSubmatch(part); found != nil {
 			if actionCondition != nil {
@@ -354,24 +294,18 @@ func validJavaScriptAnswer(source string) bool {
 	return foundCount == len(expected)
 }
 
-// ==========================================================
-// FIRESTORE VALUE HELPERS
-// ==========================================================
+// Firestore helpers
 
 func intValue(value interface{}) int64 {
 	switch v := value.(type) {
 	case int64:
 		return v
-
 	case int:
 		return int64(v)
-
 	case int32:
 		return int64(v)
-
 	case float64:
 		return int64(v)
-
 	default:
 		return 0
 	}
@@ -392,9 +326,7 @@ func stringValue(value interface{}) string {
 	return v
 }
 
-// ==========================================================
-// FIREBASE AUTHENTICATION
-// ==========================================================
+// Authentication
 
 func (s *Server) authenticate(
 	r *http.Request,
@@ -412,9 +344,7 @@ func (s *Server) authenticate(
 	)
 
 	if idToken == "" {
-		return "", errors.New(
-			"token login kosong",
-		)
+		return "", errors.New("token login kosong")
 	}
 
 	token, err := s.authClient.VerifyIDToken(
@@ -431,11 +361,7 @@ func (s *Server) authenticate(
 	return token.UID, nil
 }
 
-// ==========================================================
-// NORYTH LEVEL & RANK
-//
-// Matches Flutter XpRules.calculate()
-// ==========================================================
+// Level and Rank
 
 type NorythLevelProgress struct {
 	Level int64
@@ -453,8 +379,8 @@ func calculateNorythLevel(xp int64) NorythLevelProgress {
 	for xp >= nextLevelAt {
 		level++
 
-		requiredForNext := int64(200) +
-			(level-1)*100
+		requiredForNext :=
+			int64(200) + (level-1)*100
 
 		nextLevelAt += requiredForNext
 	}
@@ -464,13 +390,10 @@ func calculateNorythLevel(xp int64) NorythLevelProgress {
 	switch {
 	case level >= 11:
 		rank = "Master Detective"
-
 	case level >= 8:
 		rank = "Senior Investigator"
-
 	case level >= 5:
 		rank = "Investigator"
-
 	case level >= 3:
 		rank = "Analis Digital"
 	}
@@ -481,37 +404,24 @@ func calculateNorythLevel(xp int64) NorythLevelProgress {
 	}
 }
 
-// ==========================================================
-// CASE #002 - FIRESTORE REWARD TRANSACTION
-//
-// IMPORTANT:
-// 1. All reads before writes.
-// 2. Reward is granted once.
-// 3. Completion is always synchronized.
-// 4. Existing completedAt is preserved.
-// 5. Existing reward fields are preserved.
-// ==========================================================
+// Case #002 reward
 
 func (s *Server) awardCase002(
 	ctx context.Context,
 	uid string,
 ) (ClaimResponse, error) {
+	userRef := s.db.Collection("users").Doc(uid)
 
-	userRef := s.db.
-		Collection("users").
-		Doc(uid)
+	practiceCollection := userRef.Collection(
+		"missionPractice",
+	)
 
-	case001Ref := userRef.
-		Collection("missionPractice").
-		Doc("case_001")
+	case001Ref := practiceCollection.Doc("case_001")
+	case002Ref := practiceCollection.Doc("case_002")
 
-	case002Ref := userRef.
-		Collection("missionPractice").
-		Doc("case_002")
-
-	missionRef := s.db.
-		Collection("missions").
-		Doc("case_002")
+	missionRef := s.db.Collection("missions").Doc(
+		"case_002",
+	)
 
 	result := ClaimResponse{}
 
@@ -521,11 +431,6 @@ func (s *Server) awardCase002(
 			ctx context.Context,
 			tx *firestore.Transaction,
 		) error {
-
-			// ============================================
-			// ALL READS BEFORE WRITES
-			// ============================================
-
 			missionSnap, err := tx.Get(missionRef)
 
 			if err != nil {
@@ -545,7 +450,6 @@ func (s *Server) awardCase002(
 			}
 
 			case001Snap, err := tx.Get(case001Ref)
-
 			case001Exists := err == nil
 
 			if err != nil &&
@@ -557,7 +461,6 @@ func (s *Server) awardCase002(
 			}
 
 			case002Snap, err := tx.Get(case002Ref)
-
 			case002Exists := err == nil
 
 			if err != nil &&
@@ -567,10 +470,6 @@ func (s *Server) awardCase002(
 					err,
 				)
 			}
-
-			// ============================================
-			// CATALOG VALIDATION
-			// ============================================
 
 			missionData := missionSnap.Data()
 			userData := userSnap.Data()
@@ -601,10 +500,6 @@ func (s *Server) awardCase002(
 				)
 			}
 
-			// ============================================
-			// EXISTING USER DATA
-			// ============================================
-
 			oldXP := intValue(userData["xp"])
 
 			if oldXP < 0 {
@@ -614,20 +509,15 @@ func (s *Server) awardCase002(
 			}
 
 			case001Data := map[string]interface{}{}
+			case002Data := map[string]interface{}{}
 
 			if case001Exists {
 				case001Data = case001Snap.Data()
 			}
 
-			case002Data := map[string]interface{}{}
-
 			if case002Exists {
 				case002Data = case002Snap.Data()
 			}
-
-			// ============================================
-			// ONE-TIME XP REWARD
-			// ============================================
 
 			alreadyPaid := boolValue(
 				case002Data["xpAwarded"],
@@ -645,13 +535,7 @@ func (s *Server) awardCase002(
 				newTotalXP,
 			)
 
-			// ============================================
-			// COMPLETED MISSIONS
-			// ============================================
-
 			completedMissions := int64(1)
-
-			// Case #002 was validated by claimHandler.
 
 			if boolValue(
 				case001Data["practiceCompleted"],
@@ -666,10 +550,6 @@ func (s *Server) awardCase002(
 			if oldCompleted > completedMissions {
 				completedMissions = oldCompleted
 			}
-
-			// ============================================
-			// UPDATE USER STATISTICS
-			// ============================================
 
 			userUpdates := []firestore.Update{
 				{
@@ -690,8 +570,6 @@ func (s *Server) awardCase002(
 				},
 			}
 
-			// XP is changed only if this mission
-			// has never paid a reward.
 			if awardedXP > 0 {
 				userUpdates = append(
 					userUpdates,
@@ -714,31 +592,20 @@ func (s *Server) awardCase002(
 				)
 			}
 
-			// ============================================
-			// OFFICIAL CASE #002 COMPLETION
-			//
-			// FIX:
-			// This runs even when xpAwarded == true.
-			// ============================================
-
 			progressUpdate := map[string]interface{}{
 				"practiceCompleted": true,
 				"updatedAt":         firestore.ServerTimestamp,
 			}
 
-			// Preserve existing attempts.
-			// Add an initial value only when missing.
 			if _, exists := case002Data["attempts"]; !exists {
 				progressUpdate["attempts"] = int64(1)
 			}
 
-			// Preserve the original completion time.
 			if _, exists := case002Data["completedAt"]; !exists {
 				progressUpdate["completedAt"] =
 					firestore.ServerTimestamp
 			}
 
-			// Reward fields are written only once.
 			if !alreadyPaid {
 				progressUpdate["xpAwarded"] = true
 				progressUpdate["xpEarned"] = reward
@@ -756,10 +623,6 @@ func (s *Server) awardCase002(
 					err,
 				)
 			}
-
-			// ============================================
-			// RESPONSE
-			// ============================================
 
 			result = ClaimResponse{
 				Success:     true,
@@ -787,10 +650,7 @@ func (s *Server) awardCase002(
 	return result, err
 }
 
-// ==========================================================
-// CASE #002 - CLAIM HANDLER
-// POST /api/cases/002/claim
-// ==========================================================
+// Case #002 handler
 
 func (s *Server) claimHandler(
 	w http.ResponseWriter,
@@ -805,10 +665,6 @@ func (s *Server) claimHandler(
 		return
 	}
 
-	// ==============================================
-	// AUTHENTICATION
-	// ==============================================
-
 	uid, err := s.authenticate(r)
 
 	if err != nil {
@@ -820,15 +676,12 @@ func (s *Server) claimHandler(
 		return
 	}
 
-	// ==============================================
-	// REQUEST BODY
-	// ==============================================
-
 	r.Body = http.MaxBytesReader(
 		w,
 		r.Body,
 		8192,
 	)
+
 	defer r.Body.Close()
 
 	var request ClaimRequest
@@ -856,10 +709,6 @@ func (s *Server) claimHandler(
 		return
 	}
 
-	// ==============================================
-	// SERVER-SIDE JAVASCRIPT VALIDATION
-	// ==============================================
-
 	if !validJavaScriptAnswer(request.Code) {
 		respondError(
 			w,
@@ -869,17 +718,16 @@ func (s *Server) claimHandler(
 		return
 	}
 
-	// ==============================================
-	// ATOMIC XP TRANSACTION
-	// ==============================================
-
 	response, err := s.awardCase002(
 		r.Context(),
 		uid,
 	)
 
 	if err != nil {
-		log.Printf("case002 claim failed: %v", err)
+		log.Printf(
+			"case002 claim failed: %v",
+			err,
+		)
 
 		respondError(
 			w,
@@ -896,9 +744,7 @@ func (s *Server) claimHandler(
 	)
 }
 
-// ==========================================================
-// CORS MIDDLEWARE
-// ==========================================================
+// CORS
 
 func (s *Server) withCORS(
 	next http.Handler,
@@ -932,7 +778,8 @@ func (s *Server) withCORS(
 			}
 
 			if r.Method == http.MethodOptions {
-				if origin != "" && !s.origins[origin] {
+				if origin != "" &&
+					!s.origins[origin] {
 					w.WriteHeader(http.StatusForbidden)
 					return
 				}
@@ -946,18 +793,15 @@ func (s *Server) withCORS(
 	)
 }
 
-// ==========================================================
-// MAIN
-// ==========================================================
+// Main server
 
 func main() {
 	ctx := context.Background()
 
-	// ==============================================
-	// ENVIRONMENT VARIABLES
-	// ==============================================
+	projectID := strings.TrimSpace(
+		os.Getenv("FIREBASE_PROJECT_ID"),
+	)
 
-	projectID := os.Getenv("FIREBASE_PROJECT_ID")
 	serviceAccount := os.Getenv(
 		"FIREBASE_SERVICE_ACCOUNT_JSON",
 	)
@@ -968,10 +812,6 @@ func main() {
 				"FIREBASE_SERVICE_ACCOUNT_JSON wajib diisi",
 		)
 	}
-
-	// ==============================================
-	// FIREBASE ADMIN SDK
-	// ==============================================
 
 	credential := option.WithCredentialsJSON(
 		[]byte(serviceAccount),
@@ -1003,10 +843,6 @@ func main() {
 
 	defer db.Close()
 
-	// ==============================================
-	// ALLOWED ORIGINS
-	// ==============================================
-
 	origins := map[string]bool{}
 
 	for _, origin := range strings.Split(
@@ -1026,13 +862,8 @@ func main() {
 		origins:    origins,
 	}
 
-	// ==============================================
-	// ROUTES
-	// ==============================================
-
 	mux := http.NewServeMux()
 
-	// Health check for Render.
 	mux.HandleFunc(
 		"/health",
 		func(w http.ResponseWriter, r *http.Request) {
@@ -1055,38 +886,31 @@ func main() {
 		},
 	)
 
-	// Case #002 - JavaScript reward.
-	mux.HandleFunc(
-		"/api/cases/002/claim",
-		server.claimHandler,
-	)
-
-	// Case #001 - SQL reward.
-	// Handler is defined in case001_claim.go.
-	mux.HandleFunc(
-		"/api/cases/001/claim",
-		server.case001ClaimHandler,
-	)
-
-	// Case #001 - Hint tracking.
 	mux.HandleFunc(
 		"/api/cases/001/hint",
 		server.case001HintHandler,
 	)
 
-	// ==============================================
-	// PORT
-	// ==============================================
+	mux.HandleFunc(
+		"/api/cases/001/claim",
+		server.case001ClaimHandler,
+	)
+
+	mux.HandleFunc(
+		"/api/cases/002/claim",
+		server.claimHandler,
+	)
+
+	mux.HandleFunc(
+		"/api/cases/003/claim",
+		server.case003ClaimHandler,
+	)
 
 	port := os.Getenv("PORT")
 
 	if port == "" {
 		port = "8080"
 	}
-
-	// ==============================================
-	// HTTP SERVER
-	// ==============================================
 
 	httpServer := &http.Server{
 		Addr:              ":" + port,
