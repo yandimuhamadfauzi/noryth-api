@@ -24,16 +24,15 @@ import (
 
 // ==========================================================
 // NORYTH API
-// Kasus #002 - Jejak Digital yang Hilang
 //
-// Features:
-// - Firebase ID Token verification
-// - Server-side JavaScript validation
-// - Firestore transaction
-// - One-time XP reward
-// - Level and Rank synchronization
-// - Completed missions synchronization
-// - Render deployment support
+// Case #001: SQL (handler di case001_claim.go)
+// Case #002: JavaScript
+//
+// Firebase Authentication
+// Firestore transactions
+// One-time XP reward
+// Level, Rank, Completed Missions
+// Render deployment
 // ==========================================================
 
 type Server struct {
@@ -59,7 +58,7 @@ type APIError struct {
 }
 
 // ==========================================================
-// JSON RESPONSE HELPERS
+// HTTP RESPONSE
 // ==========================================================
 
 func jsonResponse(
@@ -70,7 +69,9 @@ func jsonResponse(
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 
-	_ = json.NewEncoder(w).Encode(payload)
+	if err := json.NewEncoder(w).Encode(payload); err != nil {
+		log.Printf("JSON response error: %v", err)
+	}
 }
 
 func respondError(
@@ -78,22 +79,17 @@ func respondError(
 	statusCode int,
 	message string,
 ) {
-	jsonResponse(
-		w,
-		statusCode,
-		APIError{
-			Error: message,
-		},
-	)
+	jsonResponse(w, statusCode, APIError{
+		Error: message,
+	})
 }
 
 // ==========================================================
-// JAVASCRIPT INVESTIGATION ENGINE
+// JAVASCRIPT ENGINE - CASE #002
 //
-// Ini adalah evaluator subset JavaScript,
-// bukan runtime JavaScript penuh.
+// Restricted evaluator, not arbitrary JavaScript execution.
 //
-// Contoh kode pemain:
+// Example:
 //
 // const hasil = logs.filter(log =>
 //   log.riskScore >= 80 &&
@@ -101,9 +97,6 @@ func respondError(
 // );
 //
 // console.log(hasil);
-//
-// Backend tidak mengeksekusi kode JavaScript
-// mentah menggunakan eval().
 // ==========================================================
 
 var filterPattern = regexp.MustCompile(
@@ -116,17 +109,12 @@ var filterPattern = regexp.MustCompile(
 		`([A-Za-z_$][A-Za-z0-9_$]*)\s*\)\s*;?\s*)?$`,
 )
 
-// ==========================================================
-// DIGITAL EVIDENCE MODEL
-// ==========================================================
-
 type DigitalLog struct {
 	ID        string
 	RiskScore int
 	Action    string
 }
 
-// Dataset identik dengan Kasus #002 Flutter.
 var evidence = []DigitalLog{
 	{"LOG-001", 15, "viewed"},
 	{"LOG-002", 95, "deleted"},
@@ -138,7 +126,7 @@ var evidence = []DigitalLog{
 }
 
 // ==========================================================
-// HAPUS KURUNG LUAR EKSPRESI
+// REMOVE OUTER PARENTHESES
 // ==========================================================
 
 func unwrapParentheses(value string) string {
@@ -151,11 +139,10 @@ func unwrapParentheses(value string) string {
 		wrapped := true
 
 		for index, char := range value {
-			if char == '(' {
+			switch char {
+			case '(':
 				depth++
-			}
-
-			if char == ')' {
+			case ')':
 				depth--
 			}
 
@@ -230,7 +217,7 @@ func compareString(
 }
 
 // ==========================================================
-// VALIDASI HASIL JAVASCRIPT
+// VALIDATE JAVASCRIPT ANSWER
 // ==========================================================
 
 func validJavaScriptAnswer(source string) bool {
@@ -249,23 +236,16 @@ func validJavaScriptAnswer(source string) bool {
 	expression := unwrapParentheses(match[3])
 	loggedName := match[4]
 
-	// Nama variabel console.log harus sesuai
-	// dengan variabel yang menyimpan hasil.
 	if loggedName != "" &&
 		(resultName == "" || loggedName != resultName) {
 		return false
 	}
 
-	// Kasus #002 menggunakan dua kondisi AND.
 	parts := strings.Split(expression, "&&")
 
 	if len(parts) != 2 {
 		return false
 	}
-
-	// ======================================================
-	// RISK SCORE PREDICATE
-	// ======================================================
 
 	riskPattern := regexp.MustCompile(
 		`^` + regexp.QuoteMeta(itemName) +
@@ -273,10 +253,6 @@ func validJavaScriptAnswer(source string) bool {
 			`(===|!==|==|!=|>=|<=|>|<)\s*` +
 			`(\d[\d_]*)$`,
 	)
-
-	// ======================================================
-	// ACTION PREDICATE
-	// ======================================================
 
 	actionPattern := regexp.MustCompile(
 		`^` + regexp.QuoteMeta(itemName) +
@@ -291,9 +267,9 @@ func validJavaScriptAnswer(source string) bool {
 	for _, raw := range parts {
 		part := unwrapParentheses(raw)
 
-		// ================================================
-		// PARSE RISK SCORE
-		// ================================================
+		// ----------------------------------------------
+		// RISK SCORE CONDITION
+		// ----------------------------------------------
 
 		if found := riskPattern.FindStringSubmatch(part); found != nil {
 			if riskCondition != nil {
@@ -301,9 +277,7 @@ func validJavaScriptAnswer(source string) bool {
 			}
 
 			numberText := strings.ReplaceAll(
-				found[2],
-				"_",
-				"",
+				found[2], "_", "",
 			)
 
 			number, err := strconv.Atoi(numberText)
@@ -325,9 +299,9 @@ func validJavaScriptAnswer(source string) bool {
 			continue
 		}
 
-		// ================================================
-		// PARSE ACTION
-		// ================================================
+		// ----------------------------------------------
+		// ACTION CONDITION
+		// ----------------------------------------------
 
 		if found := actionPattern.FindStringSubmatch(part); found != nil {
 			if actionCondition != nil {
@@ -353,17 +327,12 @@ func validJavaScriptAnswer(source string) bool {
 			continue
 		}
 
-		// Ekspresi tidak didukung.
 		return false
 	}
 
 	if riskCondition == nil || actionCondition == nil {
 		return false
 	}
-
-	// ======================================================
-	// EXPECTED EVIDENCE
-	// ======================================================
 
 	expected := map[string]bool{
 		"LOG-002": true,
@@ -397,6 +366,9 @@ func intValue(value interface{}) int64 {
 	case int:
 		return int64(v)
 
+	case int32:
+		return int64(v)
+
 	case float64:
 		return int64(v)
 
@@ -407,7 +379,6 @@ func intValue(value interface{}) int64 {
 
 func boolValue(value interface{}) bool {
 	v, ok := value.(bool)
-
 	return ok && v
 }
 
@@ -441,7 +412,9 @@ func (s *Server) authenticate(
 	)
 
 	if idToken == "" {
-		return "", errors.New("token kosong")
+		return "", errors.New(
+			"token login kosong",
+		)
 	}
 
 	token, err := s.authClient.VerifyIDToken(
@@ -450,29 +423,18 @@ func (s *Server) authenticate(
 	)
 
 	if err != nil {
-		return "", errors.New("token tidak valid")
+		return "", errors.New(
+			"token login tidak valid",
+		)
 	}
 
 	return token.UID, nil
 }
 
 // ==========================================================
-// NORYTH LEVEL & RANK SYSTEM
+// NORYTH LEVEL & RANK
 //
-// Sama dengan XpRules.calculate() pada Flutter.
-//
-// Level 1: 0 - 199 XP
-// Level 2: 200 - 499 XP
-// Level 3: 500 - 899 XP
-// Level 4: 900 - 1399 XP
-// Level 5: 1400 - 1999 XP
-//
-// Rank:
-// Level 1-2  : Rekrut
-// Level 3-4  : Analis Digital
-// Level 5-7  : Investigator
-// Level 8-10 : Senior Investigator
-// Level 11+  : Master Detective
+// Matches Flutter XpRules.calculate()
 // ==========================================================
 
 type NorythLevelProgress struct {
@@ -491,9 +453,8 @@ func calculateNorythLevel(xp int64) NorythLevelProgress {
 	for xp >= nextLevelAt {
 		level++
 
-		// Kebutuhan XP untuk level berikutnya
-		// bertambah 100 XP setiap naik level.
-		requiredForNext := int64(200) + (level-1)*100
+		requiredForNext := int64(200) +
+			(level-1)*100
 
 		nextLevelAt += requiredForNext
 	}
@@ -521,13 +482,14 @@ func calculateNorythLevel(xp int64) NorythLevelProgress {
 }
 
 // ==========================================================
-// CASE #002 XP REWARD
+// CASE #002 - FIRESTORE REWARD TRANSACTION
 //
-// - Transaksi Firestore
-// - XP hanya diberikan sekali
-// - Level dan Rank selalu disinkronkan
-// - Completed Missions disinkronkan
-// - Progres Kasus #001 tidak diubah
+// IMPORTANT:
+// 1. All reads before writes.
+// 2. Reward is granted once.
+// 3. Completion is always synchronized.
+// 4. Existing completedAt is preserved.
+// 5. Existing reward fields are preserved.
 // ==========================================================
 
 func (s *Server) awardCase002(
@@ -561,7 +523,7 @@ func (s *Server) awardCase002(
 		) error {
 
 			// ============================================
-			// READ SEMUA DOKUMEN SEBELUM WRITE
+			// ALL READS BEFORE WRITES
 			// ============================================
 
 			missionSnap, err := tx.Get(missionRef)
@@ -577,7 +539,7 @@ func (s *Server) awardCase002(
 
 			if err != nil {
 				return fmt.Errorf(
-					"gagal membaca akun pemain: %w",
+					"gagal membaca pengguna: %w",
 					err,
 				)
 			}
@@ -589,7 +551,7 @@ func (s *Server) awardCase002(
 			if err != nil &&
 				status.Code(err) != codes.NotFound {
 				return fmt.Errorf(
-					"gagal membaca progres case_001: %w",
+					"gagal membaca case_001: %w",
 					err,
 				)
 			}
@@ -601,21 +563,17 @@ func (s *Server) awardCase002(
 			if err != nil &&
 				status.Code(err) != codes.NotFound {
 				return fmt.Errorf(
-					"gagal membaca progres case_002: %w",
+					"gagal membaca case_002: %w",
 					err,
 				)
 			}
 
 			// ============================================
-			// DATA FIRESTORE
+			// CATALOG VALIDATION
 			// ============================================
 
 			missionData := missionSnap.Data()
 			userData := userSnap.Data()
-
-			// ============================================
-			// VALIDASI STATUS MISI
-			// ============================================
 
 			published := boolValue(
 				missionData["isPublished"],
@@ -629,13 +587,9 @@ func (s *Server) awardCase002(
 
 			if !published || missionStatus != "active" {
 				return errors.New(
-					"kasus #002 belum aktif di Firestore",
+					"kasus #002 belum aktif",
 				)
 			}
-
-			// ============================================
-			// XP REWARD DARI FIRESTORE
-			// ============================================
 
 			reward := intValue(
 				missionData["xpReward"],
@@ -648,16 +602,14 @@ func (s *Server) awardCase002(
 			}
 
 			// ============================================
-			// DATA XP SEBELUMNYA
+			// EXISTING USER DATA
 			// ============================================
 
-			oldXP := intValue(
-				userData["xp"],
-			)
+			oldXP := intValue(userData["xp"])
 
 			if oldXP < 0 {
 				return errors.New(
-					"nilai XP pemain tidak valid",
+					"nilai XP pengguna tidak valid",
 				)
 			}
 
@@ -674,7 +626,7 @@ func (s *Server) awardCase002(
 			}
 
 			// ============================================
-			// CEK HADIAH SEBELUMNYA
+			// ONE-TIME XP REWARD
 			// ============================================
 
 			alreadyPaid := boolValue(
@@ -689,28 +641,17 @@ func (s *Server) awardCase002(
 
 			newTotalXP := oldXP + awardedXP
 
-			// ============================================
-			// HITUNG LEVEL DAN RANK BARU
-			// ============================================
-
 			levelProgress := calculateNorythLevel(
 				newTotalXP,
 			)
 
 			// ============================================
-			// HITUNG KASUS SELESAI
-			//
-			// Untuk sementara, backend ini mengenal
-			// Kasus #001 dan Kasus #002.
-			//
-			// Nilai lama yang lebih tinggi
-			// tidak akan diturunkan.
+			// COMPLETED MISSIONS
 			// ============================================
 
 			completedMissions := int64(1)
 
-			// Kasus #002 sudah diverifikasi
-			// oleh claimHandler.
+			// Case #002 was validated by claimHandler.
 
 			if boolValue(
 				case001Data["practiceCompleted"],
@@ -727,7 +668,7 @@ func (s *Server) awardCase002(
 			}
 
 			// ============================================
-			// UPDATE STATISTIK USER
+			// UPDATE USER STATISTICS
 			// ============================================
 
 			userUpdates := []firestore.Update{
@@ -749,8 +690,8 @@ func (s *Server) awardCase002(
 				},
 			}
 
-			// Tambah XP hanya jika reward
-			// belum pernah diberikan.
+			// XP is changed only if this mission
+			// has never paid a reward.
 			if awardedXP > 0 {
 				userUpdates = append(
 					userUpdates,
@@ -768,48 +709,52 @@ func (s *Server) awardCase002(
 				userUpdates,
 			); err != nil {
 				return fmt.Errorf(
-					"gagal sinkronisasi statistik: %w",
+					"gagal menyimpan statistik: %w",
 					err,
 				)
 			}
 
 			// ============================================
-			// CATAT REWARD KASUS #002
+			// OFFICIAL CASE #002 COMPLETION
+			//
+			// FIX:
+			// This runs even when xpAwarded == true.
 			// ============================================
 
+			progressUpdate := map[string]interface{}{
+				"practiceCompleted": true,
+				"updatedAt":         firestore.ServerTimestamp,
+			}
+
+			// Preserve existing attempts.
+			// Add an initial value only when missing.
+			if _, exists := case002Data["attempts"]; !exists {
+				progressUpdate["attempts"] = int64(1)
+			}
+
+			// Preserve the original completion time.
+			if _, exists := case002Data["completedAt"]; !exists {
+				progressUpdate["completedAt"] =
+					firestore.ServerTimestamp
+			}
+
+			// Reward fields are written only once.
 			if !alreadyPaid {
-				attempts := intValue(
-					case002Data["attempts"],
+				progressUpdate["xpAwarded"] = true
+				progressUpdate["xpEarned"] = reward
+				progressUpdate["xpAwardedAt"] =
+					firestore.ServerTimestamp
+			}
+
+			if err := tx.Set(
+				case002Ref,
+				progressUpdate,
+				firestore.MergeAll,
+			); err != nil {
+				return fmt.Errorf(
+					"gagal menyimpan progres case_002: %w",
+					err,
 				)
-
-				if attempts < 1 {
-					attempts = 1
-				}
-
-				progressUpdate := map[string]interface{}{
-					"attempts":          attempts,
-					"practiceCompleted": true,
-					"xpAwarded":         true,
-					"xpEarned":          reward,
-					"xpAwardedAt":       firestore.ServerTimestamp,
-				}
-
-				// Pertahankan waktu selesai lama.
-				if _, exists := case002Data["completedAt"]; !exists {
-					progressUpdate["completedAt"] =
-						firestore.ServerTimestamp
-				}
-
-				if err := tx.Set(
-					case002Ref,
-					progressUpdate,
-					firestore.MergeAll,
-				); err != nil {
-					return fmt.Errorf(
-						"gagal mencatat hadiah case_002: %w",
-						err,
-					)
-				}
 			}
 
 			// ============================================
@@ -825,12 +770,14 @@ func (s *Server) awardCase002(
 
 			if alreadyPaid {
 				result.Message =
-					"Hadiah sebelumnya sudah diberikan; " +
-						"level dan rank telah disinkronkan."
+					"Hadiah sebelumnya sudah diberikan. " +
+						"Status penyelesaian, Level, dan " +
+						"Rank telah disinkronkan."
 			} else {
 				result.Message =
-					"Hadiah berhasil diberikan; " +
-						"level dan rank telah disinkronkan."
+					"Kasus #002 berhasil diselesaikan. " +
+						"Reward, Level, dan Rank " +
+						"telah disimpan."
 			}
 
 			return nil
@@ -841,15 +788,14 @@ func (s *Server) awardCase002(
 }
 
 // ==========================================================
-// API CLAIM HANDLER
+// CASE #002 - CLAIM HANDLER
+// POST /api/cases/002/claim
 // ==========================================================
 
 func (s *Server) claimHandler(
 	w http.ResponseWriter,
 	r *http.Request,
 ) {
-
-	// Hanya menerima HTTP POST.
 	if r.Method != http.MethodPost {
 		respondError(
 			w,
@@ -860,7 +806,7 @@ func (s *Server) claimHandler(
 	}
 
 	// ==============================================
-	// FIREBASE AUTH
+	// AUTHENTICATION
 	// ==============================================
 
 	uid, err := s.authenticate(r)
@@ -883,7 +829,6 @@ func (s *Server) claimHandler(
 		r.Body,
 		8192,
 	)
-
 	defer r.Body.Close()
 
 	var request ClaimRequest
@@ -895,12 +840,11 @@ func (s *Server) claimHandler(
 		respondError(
 			w,
 			http.StatusBadRequest,
-			"Format data tidak valid.",
+			"Format request tidak valid.",
 		)
 		return
 	}
 
-	// Tidak boleh ada JSON tambahan.
 	var extra interface{}
 
 	if err := decoder.Decode(&extra); err != io.EOF {
@@ -913,7 +857,7 @@ func (s *Server) claimHandler(
 	}
 
 	// ==============================================
-	// VALIDASI JAVASCRIPT DI BACKEND
+	// SERVER-SIDE JAVASCRIPT VALIDATION
 	// ==============================================
 
 	if !validJavaScriptAnswer(request.Code) {
@@ -926,7 +870,7 @@ func (s *Server) claimHandler(
 	}
 
 	// ==============================================
-	// TRANSAKSI XP
+	// ATOMIC XP TRANSACTION
 	// ==============================================
 
 	response, err := s.awardCase002(
@@ -935,15 +879,12 @@ func (s *Server) claimHandler(
 	)
 
 	if err != nil {
-		log.Printf(
-			"claim failed: %v",
-			err,
-		)
+		log.Printf("case002 claim failed: %v", err)
 
 		respondError(
 			w,
 			http.StatusConflict,
-			"Reward belum dapat diproses.",
+			"Progres atau reward belum dapat diproses.",
 		)
 		return
 	}
@@ -962,24 +903,21 @@ func (s *Server) claimHandler(
 func (s *Server) withCORS(
 	next http.Handler,
 ) http.Handler {
-
 	return http.HandlerFunc(
 		func(
 			w http.ResponseWriter,
 			r *http.Request,
 		) {
-
 			origin := r.Header.Get("Origin")
+
+			if origin != "" {
+				w.Header().Add("Vary", "Origin")
+			}
 
 			if origin != "" && s.origins[origin] {
 				w.Header().Set(
 					"Access-Control-Allow-Origin",
 					origin,
-				)
-
-				w.Header().Set(
-					"Vary",
-					"Origin",
 				)
 
 				w.Header().Set(
@@ -995,15 +933,11 @@ func (s *Server) withCORS(
 
 			if r.Method == http.MethodOptions {
 				if origin != "" && !s.origins[origin] {
-					w.WriteHeader(
-						http.StatusForbidden,
-					)
+					w.WriteHeader(http.StatusForbidden)
 					return
 				}
 
-				w.WriteHeader(
-					http.StatusNoContent,
-				)
+				w.WriteHeader(http.StatusNoContent)
 				return
 			}
 
@@ -1023,10 +957,7 @@ func main() {
 	// ENVIRONMENT VARIABLES
 	// ==============================================
 
-	projectID := os.Getenv(
-		"FIREBASE_PROJECT_ID",
-	)
-
+	projectID := os.Getenv("FIREBASE_PROJECT_ID")
 	serviceAccount := os.Getenv(
 		"FIREBASE_SERVICE_ACCOUNT_JSON",
 	)
@@ -1096,18 +1027,24 @@ func main() {
 	}
 
 	// ==============================================
-	// HTTP ROUTES
+	// ROUTES
 	// ==============================================
 
 	mux := http.NewServeMux()
 
-	// Health check Render.
+	// Health check for Render.
 	mux.HandleFunc(
 		"/health",
-		func(
-			w http.ResponseWriter,
-			r *http.Request,
-		) {
+		func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodGet {
+				respondError(
+					w,
+					http.StatusMethodNotAllowed,
+					"Gunakan GET.",
+				)
+				return
+			}
+
 			jsonResponse(
 				w,
 				http.StatusOK,
@@ -1118,24 +1055,27 @@ func main() {
 		},
 	)
 
-	// Klaim hadiah XP Kasus #002.
+	// Case #002 - JavaScript reward.
 	mux.HandleFunc(
 		"/api/cases/002/claim",
 		server.claimHandler,
 	)
 
+	// Case #001 - SQL reward.
+	// Handler is defined in case001_claim.go.
 	mux.HandleFunc(
 		"/api/cases/001/claim",
 		server.case001ClaimHandler,
 	)
 
+	// Case #001 - Hint tracking.
 	mux.HandleFunc(
 		"/api/cases/001/hint",
 		server.case001HintHandler,
 	)
 
 	// ==============================================
-	// SERVER PORT
+	// PORT
 	// ==============================================
 
 	port := os.Getenv("PORT")
