@@ -31,94 +31,54 @@ func (s *Server) submitCase003(
 	uid string,
 	correct bool,
 ) (Case003SubmitResponse, error) {
-
 	userRef := s.db.Collection("users").Doc(uid)
+	practice := userRef.Collection("missionPractice")
 
-	practiceCollection := userRef.Collection(
-		"missionPractice",
-	)
+	case001Ref := practice.Doc("case_001")
+	case002Ref := practice.Doc("case_002")
+	case003Ref := practice.Doc("case_003")
 
-	case001Ref := practiceCollection.Doc("case_001")
-	case002Ref := practiceCollection.Doc("case_002")
-	case003Ref := practiceCollection.Doc("case_003")
+	missionRef := s.db.Collection("missions").Doc("case_003")
+	historyRef := case003Ref.Collection("attemptHistory").NewDoc()
 
-	missionRef := s.db.Collection("missions").Doc(
-		"case_003",
-	)
-
-	response := Case003SubmitResponse{}
+	var response Case003SubmitResponse
 
 	err := s.db.RunTransaction(
 		ctx,
-		func(
-			ctx context.Context,
-			tx *firestore.Transaction,
-		) error {
-
-			// Seluruh READ sebelum WRITE.
-
+		func(ctx context.Context, tx *firestore.Transaction) error {
 			userSnap, err := tx.Get(userRef)
-
 			if err != nil {
-				return fmt.Errorf(
-					"gagal membaca pengguna: %w",
-					err,
-				)
+				return fmt.Errorf("gagal membaca pengguna: %w", err)
 			}
 
 			progressSnap, err := tx.Get(case003Ref)
-
-			progressExists := err == nil
-
-			if err != nil &&
-				status.Code(err) != codes.NotFound {
-				return fmt.Errorf(
-					"gagal membaca progres Python: %w",
-					err,
-				)
+			if err != nil && status.Code(err) != codes.NotFound {
+				return fmt.Errorf("gagal membaca progres Python: %w", err)
 			}
 
 			userData := userSnap.Data()
-
 			progressData := map[string]interface{}{}
 
-			if progressExists {
+			if err == nil {
 				progressData = progressSnap.Data()
 			}
 
-			attempts := intValue(
-				progressData["attempts"],
-			)
-
+			attempts := intValue(progressData["attempts"])
 			if attempts < 0 || attempts >= 1000000000 {
-				return errors.New(
-					"jumlah percobaan tidak valid",
-				)
+				return errors.New("jumlah percobaan tidak valid")
 			}
-
 			attempts++
 
 			oldXP := intValue(userData["xp"])
-
 			if oldXP < 0 {
-				return errors.New(
-					"XP pengguna tidak valid",
-				)
+				return errors.New("XP pengguna tidak valid")
 			}
 
-			alreadyPaid := boolValue(
-				progressData["xpAwarded"],
-			)
-
-			completed := boolValue(
-				progressData["practiceCompleted"],
-			)
+			alreadyPaid := boolValue(progressData["xpAwarded"])
+			completed := boolValue(progressData["practiceCompleted"])
 
 			awardedXP := int64(0)
 			newXP := oldXP
-
-			// Fields progres yang akan ditulis
-			// untuk semua percobaan.
 
 			progressUpdate := map[string]interface{}{
 				"attempts":        attempts,
@@ -128,12 +88,7 @@ func (s *Server) submitCase003(
 			}
 
 			if correct {
-				// Baca katalog misi dan progres
-				// kasus lain hanya untuk jawaban
-				// yang benar.
-
 				missionSnap, err := tx.Get(missionRef)
-
 				if err != nil {
 					return fmt.Errorf(
 						"gagal membaca katalog case_003: %w",
@@ -143,111 +98,62 @@ func (s *Server) submitCase003(
 
 				missionData := missionSnap.Data()
 
-				published := boolValue(
-					missionData["isPublished"],
-				)
-
-				playable := boolValue(
-					missionData["isPlayable"],
-				)
-
+				published := boolValue(missionData["isPublished"])
+				playable := boolValue(missionData["isPlayable"])
 				missionStatus := strings.ToLower(
-					strings.TrimSpace(
-						stringValue(missionData["status"]),
-					),
+					strings.TrimSpace(stringValue(missionData["status"])),
 				)
 
-				if !published ||
-					!playable ||
-					missionStatus != "active" {
-					return errors.New(
-						"case_003 belum aktif",
-					)
+				if !published || !playable || missionStatus != "active" {
+					return errors.New("case_003 belum aktif")
 				}
 
-				reward := intValue(
-					missionData["xpReward"],
-				)
-
+				reward := intValue(missionData["xpReward"])
 				if reward <= 0 || reward > 1000 {
-					return errors.New(
-						"xpReward case_003 tidak valid",
-					)
+					return errors.New("xpReward case_003 tidak valid")
 				}
 
 				case001Snap, err := tx.Get(case001Ref)
-
-				case001Exists := err == nil
-
-				if err != nil &&
-					status.Code(err) != codes.NotFound {
-					return fmt.Errorf(
-						"gagal membaca case_001: %w",
-						err,
-					)
-				}
-
-				case002Snap, err := tx.Get(case002Ref)
-
-				case002Exists := err == nil
-
-				if err != nil &&
-					status.Code(err) != codes.NotFound {
-					return fmt.Errorf(
-						"gagal membaca case_002: %w",
-						err,
-					)
+				if err != nil && status.Code(err) != codes.NotFound {
+					return fmt.Errorf("gagal membaca case_001: %w", err)
 				}
 
 				case001Data := map[string]interface{}{}
-				case002Data := map[string]interface{}{}
-
-				if case001Exists {
+				if err == nil {
 					case001Data = case001Snap.Data()
 				}
 
-				if case002Exists {
-					case002Data = case002Snap.Data()
+				case002Snap, err := tx.Get(case002Ref)
+				if err != nil && status.Code(err) != codes.NotFound {
+					return fmt.Errorf("gagal membaca case_002: %w", err)
 				}
 
-				// Reward hanya sekali.
+				case002Data := map[string]interface{}{}
+				if err == nil {
+					case002Data = case002Snap.Data()
+				}
 
 				if !alreadyPaid {
 					awardedXP = reward
 				}
 
 				newXP = oldXP + awardedXP
-
-				levelProgress := calculateNorythLevel(
-					newXP,
-				)
-
-				// Sinkronisasi total kasus selesai.
+				levelProgress := calculateNorythLevel(newXP)
 
 				completedMissions := int64(1)
 
-				if boolValue(
-					case001Data["practiceCompleted"],
-				) {
+				if boolValue(case001Data["practiceCompleted"]) {
 					completedMissions++
 				}
 
-				if boolValue(
-					case002Data["practiceCompleted"],
-				) {
+				if boolValue(case002Data["practiceCompleted"]) {
 					completedMissions++
 				}
 
-				oldCompleted := intValue(
-					userData["completedMissions"],
-				)
-
+				oldCompleted := intValue(userData["completedMissions"])
 				if oldCompleted > completedMissions {
 					completedMissions = oldCompleted
 				}
-
-				// Update akun hanya untuk
-				// jawaban yang benar.
 
 				userUpdates := []firestore.Update{
 					{
@@ -272,21 +178,19 @@ func (s *Server) submitCase003(
 					userUpdates = append(
 						userUpdates,
 						firestore.Update{
-							Path: "xp",
-							Value: firestore.Increment(
-								awardedXP,
-							),
+							Path:  "xp",
+							Value: firestore.Increment(awardedXP),
 						},
 					)
 				}
 
-				// Status penyelesaian resmi.
-
 				progressUpdate["practiceCompleted"] = true
 
 				if !completed {
-					progressUpdate["completedAt"] =
-						firestore.ServerTimestamp
+					if _, exists := progressData["completedAt"]; !exists {
+						progressUpdate["completedAt"] =
+							firestore.ServerTimestamp
+					}
 				}
 
 				if !alreadyPaid {
@@ -296,12 +200,7 @@ func (s *Server) submitCase003(
 						firestore.ServerTimestamp
 				}
 
-				// Setelah semua READ, tulis user.
-
-				if err := tx.Update(
-					userRef,
-					userUpdates,
-				); err != nil {
+				if err := tx.Update(userRef, userUpdates); err != nil {
 					return fmt.Errorf(
 						"gagal memperbarui profil: %w",
 						err,
@@ -311,33 +210,37 @@ func (s *Server) submitCase003(
 				completed = true
 			}
 
-			// Simpan attempt dan status reward
-			// dalam transaksi yang sama.
-
 			if err := tx.Set(
 				case003Ref,
 				progressUpdate,
 				firestore.MergeAll,
 			); err != nil {
+				return fmt.Errorf("gagal menyimpan progres: %w", err)
+			}
+
+			historyData := map[string]interface{}{
+				"attemptNumber": attempts,
+				"correct":       correct,
+				"rewardGranted": awardedXP > 0,
+				"awardedXp":     awardedXP,
+				"createdAt":     firestore.ServerTimestamp,
+			}
+
+			if err := tx.Set(historyRef, historyData); err != nil {
 				return fmt.Errorf(
-					"gagal menyimpan progres: %w",
+					"gagal menyimpan riwayat case_003: %w",
 					err,
 				)
 			}
 
-			message := "Percobaan Python tersimpan."
+			message := "Percobaan tersimpan. Jawaban belum sesuai."
 
 			if correct {
 				if alreadyPaid {
-					message =
-						"Kasus sudah selesai. XP tidak diberikan ulang."
+					message = "Kasus sudah selesai. XP tidak diberikan ulang."
 				} else {
-					message =
-						"Kasus #003 berhasil diselesaikan."
+					message = "Kasus #003 berhasil diselesaikan."
 				}
-			} else {
-				message =
-					"Percobaan tersimpan. Jawaban belum sesuai."
 			}
 
 			response = Case003SubmitResponse{
@@ -372,7 +275,6 @@ func (s *Server) case003SubmitHandler(
 	}
 
 	uid, err := s.authenticate(r)
-
 	if err != nil {
 		respondError(
 			w,
@@ -382,12 +284,7 @@ func (s *Server) case003SubmitHandler(
 		return
 	}
 
-	r.Body = http.MaxBytesReader(
-		w,
-		r.Body,
-		8192,
-	)
-
+	r.Body = http.MaxBytesReader(w, r.Body, 8192)
 	defer r.Body.Close()
 
 	var request ClaimRequest
@@ -426,9 +323,6 @@ func (s *Server) case003SubmitHandler(
 		return
 	}
 
-	// Validasi di server.
-	// Tidak menjalankan Python mentah.
-
 	correct := validPythonCase003Answer(code)
 
 	result, err := s.submitCase003(
@@ -438,10 +332,7 @@ func (s *Server) case003SubmitHandler(
 	)
 
 	if err != nil {
-		log.Printf(
-			"case003 submit failed: %v",
-			err,
-		)
+		log.Printf("case003 submit failed: %v", err)
 
 		respondError(
 			w,
@@ -451,9 +342,5 @@ func (s *Server) case003SubmitHandler(
 		return
 	}
 
-	jsonResponse(
-		w,
-		http.StatusOK,
-		result,
-	)
+	jsonResponse(w, http.StatusOK, result)
 }
