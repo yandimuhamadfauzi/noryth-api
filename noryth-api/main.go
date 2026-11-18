@@ -906,6 +906,11 @@ func main() {
 		server.case003ClaimHandler,
 	)
 
+	mux.HandleFunc(
+		"/api/cases/003/attempt",
+		server.case003AttemptHandler,
+	)
+
 	port := os.Getenv("PORT")
 
 	if port == "" {
