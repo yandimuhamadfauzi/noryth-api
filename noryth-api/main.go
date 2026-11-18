@@ -911,6 +911,11 @@ func main() {
 		server.case003AttemptHandler,
 	)
 
+	mux.HandleFunc(
+		"/api/cases/003/submit",
+		server.case003SubmitHandler,
+	)
+
 	port := os.Getenv("PORT")
 
 	if port == "" {
