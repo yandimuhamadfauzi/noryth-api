@@ -916,6 +916,11 @@ func main() {
 		server.case003SubmitHandler,
 	)
 
+	mux.HandleFunc(
+		"/api/achievements/sync",
+		server.achievementsSyncHandler,
+	)
+
 	port := os.Getenv("PORT")
 
 	if port == "" {
